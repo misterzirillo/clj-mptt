@@ -1,7 +1,8 @@
 (ns clj-mptt.core
   (:require [clojure.zip :refer [down right left node vector-zip up]]
             [clj-mptt.util :refer [data-node?]]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [clj-mptt.spec]))
 
 (defn- tag-if [ok loc args]
   (let [[mptt i] args]
