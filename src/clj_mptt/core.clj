@@ -1,7 +1,8 @@
 (ns clj-mptt.core
   (:require [clojure.zip :refer [down right left node vector-zip up]]
             [clj-mptt.util :refer [data-node?]]
-            [clojure.spec.alpha :as s]
+            [com.rpl.specter :as s :refer [ALL MAP-VALS VAL LAST]]
+            [clojure.spec.alpha :as spec]
             [clj-mptt.spec]))
 
 (defn- tag-if [ok loc args]
@@ -41,12 +42,31 @@
       mptt)))
 
 (defn mptt-zip
-  "Parse a nested vector data structure to flattened MPTT data.
+  "Parse a nested vector data structure to MPTT.
 
   The supplied data must follow the format [:a :b [:c]] where :a and :b are
   children of the root and :c is a child of :b. A node with children is always
   followed by a vector. A vector is never followed by another vector. A vector
   is never the first element in a vector."
   [data]
-  {:pre [(s/valid? :clj-mptt.spec/mptt data)]}
+  {:pre [(spec/valid? :clj-mptt.spec/mptt data)]}
   (trampoline mptt-trampoline {} 0 (vector-zip data) nil))
+
+(defn- shift-nodes
+  "Moves :left / :right at and beyond split by offset"
+  [mptt split offset]
+  (s/transform [MAP-VALS MAP-VALS (partial <= split)] (partial + offset) mptt))
+
+(defn add-node
+  "Insert data into mptt with :left of left and right of left + 1. Overlapping
+  boundaries will be shifted to keep a valid tree. Inserting left < 0 or left >
+  the maximum right bound is disallowed."
+  [mptt data left]
+  (let [[max min] ((juxt (partial apply max)
+                         (partial apply min))
+                    (s/select [MAP-VALS MAP-VALS] mptt))]
+    (println max min)
+    (if (and (<= min left)
+             (>= max left))
+      (assoc (shift-nodes mptt left 2) data #:mptt{:left left :right (inc left)})
+      (throw (IllegalArgumentException. (str "Invalid left bound " left))))))
