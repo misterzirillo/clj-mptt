@@ -70,3 +70,31 @@
              (>= max left))
       (assoc (shift-nodes mptt left 2) data #:mptt{:left left :right (inc left)})
       (throw (IllegalArgumentException. (str "Invalid left bound " left))))))
+
+(def lr (juxt :mptt/left :mptt/right))
+
+(defn is-child
+  [parent child]
+  (let [[parent-left parent-right] (lr parent)
+        [left right] (lr child)]
+    (and (> left parent-left)
+         (< right parent-right))))
+
+(defn get-children
+  [mptt k]
+  (let [parent (get mptt k)]
+    (s/select [(s/filterer [LAST #(is-child parent %)]) ALL s/FIRST] mptt)))
+
+(defn remove-node
+  "Remove node k from mptt. Returns vector [mptt removed] where removed contains
+  the keys of every removed node (k and k's children)."
+  [mptt k]
+  (if-let [node (get mptt k)]
+    (let [[left right] (lr node)
+          width (dec (- left right))
+          children (get-children mptt k)]
+      [(-> (apply dissoc mptt children)
+           (dissoc k)
+           (shift-nodes left width))
+       (vec (cons k children))])
+    (throw (IllegalArgumentException. "No such node " k))))
