@@ -3,6 +3,7 @@
 A set of Clojure utilities for creating and manipulating Modified Preorder Traversal Trees.
 
 ## What is Modified Preorder Tree Traversal?
+_from https://github.com/django-mptt/django-mptt_
 
 MPTT is a technique for storing hierarchical data in a database. The aim is to
 make retrieval operations very efficient.
