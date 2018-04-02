@@ -57,23 +57,25 @@
   [mptt split offset]
   (s/transform [MAP-VALS MAP-VALS (partial <= split)] (partial + offset) mptt))
 
-(defn add-node
-  "Insert data into mptt with :left of left and right of left + 1. Overlapping
-  boundaries will be shifted to keep a valid tree. Inserting left < 0 or left >
-  the maximum right bound is disallowed."
+(def min-max (juxt (partial apply max)
+                   (partial apply min)))
+
+(defn- legal-left
+  [mptt left]
+  (let [[max min] (min-max (s/select [MAP-VALS MAP-VALS] mptt))]
+    (and (<= min left)
+         (>= (inc max) left))))
+
+(defn add-new-node
+  "Insert new data into tree with no children with the specified left."
   [mptt data left]
-  (let [[max min] ((juxt (partial apply max)
-                         (partial apply min))
-                    (s/select [MAP-VALS MAP-VALS] mptt))]
-    (println max min)
-    (if (and (<= min left)
-             (>= max left))
-      (assoc (shift-nodes mptt left 2) data #:mptt{:left left :right (inc left)})
-      (throw (IllegalArgumentException. (str "Invalid left bound " left))))))
+  (if (legal-left mptt left)
+    (assoc (shift-nodes mptt left 2) data #:mptt{:left left :right (inc left)})
+    (throw (IllegalArgumentException. (str "Invalid left bound " left)))))
 
 (def lr (juxt :mptt/left :mptt/right))
 
-(defn is-child
+(defn is-child?
   [parent child]
   (let [[parent-left parent-right] (lr parent)
         [left right] (lr child)]
@@ -83,18 +85,42 @@
 (defn get-children
   [mptt k]
   (let [parent (get mptt k)]
-    (s/select [(s/filterer [LAST #(is-child parent %)]) ALL s/FIRST] mptt)))
+    (s/select [(s/filterer [LAST #(is-child? parent %)]) ALL] mptt)))
 
 (defn remove-node
   "Remove node k from mptt. Returns vector [mptt removed] where removed contains
-  the keys of every removed node (k and k's children)."
+  every removed node (k and k's children)."
   [mptt k]
   (if-let [node (get mptt k)]
     (let [[left right] (lr node)
-          width (dec (- left right))
           children (get-children mptt k)]
-      [(-> (apply dissoc mptt children)
+      [(-> (apply dissoc mptt (s/select s/MAP-KEYS children))
            (dissoc k)
-           (shift-nodes left width))
-       (vec (cons k children))])
+           (shift-nodes left (dec (- left right))))
+       (into (hash-map) (cons [k node] children))])
     (throw (IllegalArgumentException. "No such node " k))))
+
+(defn valid-move?
+  [mptt k new-left]
+  (if-let [node (get mptt k)]
+    (and (legal-left mptt new-left)
+         (or (<= new-left (:mptt/left node))
+             (> new-left (:mptt/right node))))))
+
+(defn move-node
+  "Moves node at k to a different position in mptt with a new :left of new-left.
+  new-left is required to be a child position of the root but not a child position of k."
+  [mptt k new-left]
+  (if (valid-move? mptt k new-left)
+    (let [[new-tree moved] (remove-node mptt k)             ;; remove the nodes that are moving
+          [left right] (lr (get mptt k))
+          removed-width (inc (- right left))
+          new-left (if (< right new-left)                   ;; find new-left if its position changed
+                     (- new-left removed-width)
+                     new-left)]
+
+      ;; make space for the incoming nodes in new-tree
+      ;; then align moved boundaries with new-tree and merge them
+      (-> (shift-nodes new-tree new-left removed-width)
+          (merge (shift-nodes moved 0 (- new-left left)))))
+    (throw (IllegalArgumentException. (str "Invalid move " k new-left)))))
