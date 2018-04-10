@@ -140,12 +140,12 @@
 (defn last-child
   "Helper to target the last child position of the node for k"
   [mptt k]
-  (s/select [k :mptt/right] mptt))
+  (s/select-one [k :mptt/right] mptt))
 
 (defn left-of
   "Helper to target the position to the left of the node k"
   [mptt k]
-  (s/select [k :mptt/left] mptt))
+  (s/select-one [k :mptt/left] mptt))
 
 (defn first-child
   "Helper to target the first child position of the node for k"
