@@ -73,12 +73,12 @@
     (assoc (shift-nodes mptt left 2) data #:mptt{:left left :right (inc left)})
     (throw (IllegalArgumentException. (str "Invalid left bound " left)))))
 
-(def lr (juxt :mptt/left :mptt/right))
+(def left-right (juxt :mptt/left :mptt/right))
 
 (defn is-child?
   [parent child]
-  (let [[parent-left parent-right] (lr parent)
-        [left right] (lr child)]
+  (let [[parent-left parent-right] (left-right parent)
+        [left right] (left-right child)]
     (and (> left parent-left)
          (< right parent-right))))
 
@@ -92,7 +92,7 @@
   every removed node (k and k's children)."
   [mptt k]
   (if-let [node (get mptt k)]
-    (let [[left right] (lr node)
+    (let [[left right] (left-right node)
           children (get-children mptt k)]
       [(-> (apply dissoc mptt (s/select s/MAP-KEYS children))
            (dissoc k)
@@ -113,14 +113,46 @@
   [mptt k new-left]
   (if (valid-move? mptt k new-left)
     (let [[new-tree moved] (remove-node mptt k)             ;; remove the nodes that are moving
-          [left right] (lr (get mptt k))
+          [left right] (left-right (get mptt k))
           removed-width (inc (- right left))
-          new-left (if (< right new-left)                   ;; find new-left if its position changed
-                     (- new-left removed-width)
-                     new-left)]
+          new-left      (if (< right new-left)              ;; find new-left if its position changed
+                          (- new-left removed-width)
+                          new-left)]
 
       ;; make space for the incoming nodes in new-tree
       ;; then align moved boundaries with new-tree and merge them
       (-> (shift-nodes new-tree new-left removed-width)
           (merge (shift-nodes moved 0 (- new-left left)))))
     (throw (IllegalArgumentException. (str "Invalid move " k new-left)))))
+
+(defn move-nodes
+  "Find keys ks and move them in order to the specified location"
+  [mptt ks new-left]
+  (loop [mptt mptt
+         left new-left
+         [k & more] ks]
+    (if k
+      (let [moved     (move-node mptt k left)               ;; move the first node
+            next-left (inc (:mptt/right (k moved)))]        ;; find where next node should go
+        (recur moved next-left more))                       ;; move the next node...
+      mptt)))
+
+(defn last-child
+  "Helper to target the last child position of the node for k"
+  [mptt k]
+  (s/select [k :mptt/right] mptt))
+
+(defn left-of
+  "Helper to target the position to the left of the node k"
+  [mptt k]
+  (s/select [k :mptt/left] mptt))
+
+(defn first-child
+  "Helper to target the first child position of the node for k"
+  [mptt k]
+  (inc (left-of mptt k)))
+
+(defn right-of
+  "Helper to target the position to the right of the node for k"
+  [mptt k]
+  (inc (last-child mptt k)))
